@@ -1,6 +1,6 @@
 /*
 *	Plane Crash
-*	Copyright (C) 2021 Silvers
+*	Copyright (C) 2022 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION		"1.9"
+#define PLUGIN_VERSION		"1.10"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+1.10 (20-Sep-2022)
+	- Added cvar "l4d_plane_crash_chance" to set the chance of a plane crash being created, either saved or using the random cvar. Requested by "Sam B".
 
 1.9 (04-Dec-2021)
 	- Changes to fix warnings when compiling on SourceMod 1.11.
@@ -82,6 +85,8 @@
 #include <sourcemod>
 #include <sdktools>
 
+
+
 #define CVAR_FLAGS			FCVAR_NOTIFY
 #define CHAT_TAG			"\x03[PlaneCrash] \x05"
 #define CONFIG_SPAWNS		"data/l4d_plane_crash.cfg"
@@ -110,8 +115,8 @@
 
 Handle g_hTimerBeam;
 Menu g_hMenuPos, g_hMenuVMaxs, g_hMenuVMins;
-ConVar g_hCvarAllow, g_hCvarAngle, g_hCvarClear, g_hCvarDamage, g_hCvarHorde, g_hCvarMPGameMode, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarTime;
-int g_iCvarAngle, g_iCvarClear, g_iCvarDamage, g_iCvarHorde, g_iEntities[MAX_ENTITIES], g_iHaloMaterial, g_iLaserMaterial, g_iPlayerSpawn, g_iRoundStart, g_iSaved, g_iTrigger;
+ConVar g_hCvarAllow, g_hCvarAngle, g_hCvarClear, g_hCvarChance, g_hCvarDamage, g_hCvarHorde, g_hCvarMPGameMode, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarTime;
+int g_iCvarAngle, g_iCvarClear, g_iCvarChance, g_iCvarDamage, g_iCvarHorde, g_iEntities[MAX_ENTITIES], g_iHaloMaterial, g_iLaserMaterial, g_iPlayerSpawn, g_iRoundStart, g_iSaved, g_iTrigger;
 bool g_bCvarAllow, g_bMapStarted;
 float g_fCvarTime;
 
@@ -137,13 +142,15 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 		strcopy(error, err_max, "Plugin only supports Left 4 Dead 1 & 2.");
 		return APLRes_SilentFailure;
 	}
+
 	return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
 	g_hCvarAllow =			CreateConVar(	"l4d_plane_crash_allow",		"1",			"0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
-	g_hCvarAngle =			CreateConVar(	"l4d_plane_crash_angle",		"1",			"0=Spawn the plane infront of you (crashes to the left), 1=Spawn so the plane crashes infront of you.", CVAR_FLAGS );
+	g_hCvarAngle =			CreateConVar(	"l4d_plane_crash_angle",		"1",			"0=Spawn the plane in front of you (crashes to the left), 1=Spawn so the plane crashes in front of you.", CVAR_FLAGS );
+	g_hCvarChance =			CreateConVar(	"l4d_plane_crash_chance",		"100",			"The percentage change of a saved plane crash being created, either from the saved config or using the random cvar.", CVAR_FLAGS );
 	g_hCvarClear =			CreateConVar(	"l4d_plane_crash_clear",		"0",			"0=Off, Remove the plane crash this many seconds after the plane hits the ground.", CVAR_FLAGS );
 	g_hCvarDamage =			CreateConVar(	"l4d_plane_crash_damage",		"20",			"0=Off, Other value will hurt players if they get crushed by some debris.", CVAR_FLAGS );
 	g_hCvarHorde =			CreateConVar(	"l4d_plane_crash_horde",		"24",			"0=Off, Trigger a panic event this many seconds after the plane spawns.", CVAR_FLAGS );
@@ -161,6 +168,7 @@ public void OnPluginStart()
 	g_hCvarModesOff.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarModesTog.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarAngle.AddChangeHook(ConVarChanged_Cvars);
+	g_hCvarChance.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarClear.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarDamage.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarHorde.AddChangeHook(ConVarChanged_Cvars);
@@ -306,12 +314,12 @@ public void OnConfigsExecuted()
 	IsAllowed();
 }
 
-public void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	IsAllowed();
 }
 
-public void ConVarChanged_Cvars(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_Cvars(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	GetCvars();
 }
@@ -319,6 +327,7 @@ public void ConVarChanged_Cvars(Handle convar, const char[] oldValue, const char
 void GetCvars()
 {
 	g_iCvarAngle = g_hCvarAngle.IntValue;
+	g_iCvarChance = g_hCvarChance.IntValue;
 	g_iCvarClear = g_hCvarClear.IntValue;
 	g_iCvarDamage = g_hCvarDamage.IntValue;
 	g_iCvarHorde = g_hCvarHorde.IntValue;
@@ -337,6 +346,7 @@ void IsAllowed()
 		HookEvent("player_spawn",		Event_PlayerSpawn,	EventHookMode_PostNoCopy);
 		HookEvent("round_start",		Event_RoundStart,	EventHookMode_PostNoCopy);
 		HookEvent("round_end",			Event_RoundEnd,		EventHookMode_PostNoCopy);
+
 		CreateCrash(0);
 	}
 
@@ -356,14 +366,15 @@ bool IsAllowedGameMode()
 	if( g_hCvarMPGameMode == null )
 		return false;
 
+	if( g_bMapStarted == false )
+		return false;
+
 	int iCvarModesTog = g_hCvarModesTog.IntValue;
+
+	g_iCurrentMode = 0;
+
 	if( iCvarModesTog != 0 )
 	{
-		if( g_bMapStarted == false )
-			return false;
-
-		g_iCurrentMode = 0;
-
 		int entity = CreateEntityByName("info_gamemode");
 		if( IsValidEntity(entity) )
 		{
@@ -408,7 +419,7 @@ bool IsAllowedGameMode()
 	return true;
 }
 
-public void OnGamemode(const char[] output, int caller, int activator, float delay)
+void OnGamemode(const char[] output, int caller, int activator, float delay)
 {
 	if( strcmp(output, "OnCoop") == 0 )
 		g_iCurrentMode = 1;
@@ -425,29 +436,32 @@ public void OnGamemode(const char[] output, int caller, int activator, float del
 // ====================================================================================================
 //					EVENTS
 // ====================================================================================================
-public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	ResetPlugin();
 }
 
-public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
 	if( g_iPlayerSpawn == 1 && g_iRoundStart == 0 )
 		CreateTimer(1.0, TimerStart, _, TIMER_FLAG_NO_MAPCHANGE);
 	g_iRoundStart = 1;
 }
 
-public void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	if( g_iPlayerSpawn == 0 && g_iRoundStart == 1 )
 		CreateTimer(1.0, TimerStart, _, TIMER_FLAG_NO_MAPCHANGE);
 	g_iPlayerSpawn = 1;
 }
 
-public Action TimerStart(Handle timer)
+Action TimerStart(Handle timer)
 {
 	ResetPlugin();
+
+	// Saved position?
 	CreateCrash(0);
+
 	return Plugin_Continue;
 }
 
@@ -456,7 +470,7 @@ public Action TimerStart(Handle timer)
 // ====================================================================================================
 //					COMMANDS
 // ====================================================================================================
-public Action CmdPlaneClear(int client, int args)
+Action CmdPlaneClear(int client, int args)
 {
 	ResetPlugin();
 	if( client )
@@ -466,7 +480,7 @@ public Action CmdPlaneClear(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdPlaneTime(int client, int args)
+Action CmdPlaneTime(int client, int args)
 {
 	if( !client )
 	{
@@ -522,7 +536,7 @@ public Action CmdPlaneTime(int client, int args)
 	return Plugin_Handled;
 }
 
-public Action CmdPlaneMenu(int client, int args)
+Action CmdPlaneMenu(int client, int args)
 {
 	if( !client )
 	{
@@ -569,7 +583,7 @@ void ShowMenuMain(int client)
 	hMenu.Display(client, MENU_TIME_FOREVER);
 }
 
-public int MainMenuHandler(Menu menu, MenuAction action, int client, int index)
+int MainMenuHandler(Menu menu, MenuAction action, int client, int index)
 {
 	if( action == MenuAction_End )
 	{
@@ -595,6 +609,8 @@ public int MainMenuHandler(Menu menu, MenuAction action, int client, int index)
 			}
 			case 3:
 			{
+				ResetPlugin();
+
 				if( IsValidEntRef(g_iEntities[0]) )
 					AcceptEntityInput(g_iEntities[0], "Trigger");
 				else
@@ -639,7 +655,7 @@ public int MainMenuHandler(Menu menu, MenuAction action, int client, int index)
 	return 0;
 }
 
-public int VMaxsMenuHandler(Menu menu, MenuAction action, int client, int index)
+int VMaxsMenuHandler(Menu menu, MenuAction action, int client, int index)
 {
 	if( action == MenuAction_Cancel )
 	{
@@ -665,7 +681,7 @@ public int VMaxsMenuHandler(Menu menu, MenuAction action, int client, int index)
 	return 0;
 }
 
-public int VMinsMenuHandler(Menu menu, MenuAction action, int client, int index)
+int VMinsMenuHandler(Menu menu, MenuAction action, int client, int index)
 {
 	if( action == MenuAction_Cancel )
 	{
@@ -691,7 +707,7 @@ public int VMinsMenuHandler(Menu menu, MenuAction action, int client, int index)
 	return 0;
 }
 
-public int PosMenuHandler(Menu menu, MenuAction action, int client, int index)
+int PosMenuHandler(Menu menu, MenuAction action, int client, int index)
 {
 	if( action == MenuAction_Cancel )
 	{
@@ -933,12 +949,17 @@ void CreateTriggerMultiple(float vPos[3], float vMaxs[3], float vMins[3])
 	g_iTrigger = EntIndexToEntRef(g_iTrigger);
 }
 
-public void OnStartTouch(const char[] output, int caller, int activator, float delay)
+void OnStartTouch(const char[] output, int caller, int activator, float delay)
 {
 	if( IsClientInGame(activator) && GetClientTeam(activator) == 2 && IsValidEntRef(g_iEntities[0]) )
 	{
-		AcceptEntityInput(g_iEntities[0], "Trigger");
 		AcceptEntityInput(caller, "Disable");
+
+		// Chance to spawn
+		if( g_iCvarChance == 100 || GetRandomInt(1, 100) <= g_iCvarChance )
+		{
+			AcceptEntityInput(g_iEntities[0], "Trigger");
+		}
 	}
 }
 
@@ -981,7 +1002,7 @@ void SaveMaxMin(int type, float vVec[3])
 	delete hFile;
 }
 
-public Action TimerBeam(Handle timer)
+Action TimerBeam(Handle timer)
 {
 	if( IsValidEntRef(g_iTrigger) == false )
 	{
@@ -1041,69 +1062,74 @@ void CreateCrash(int client)
 	int time;
 	int method;
 
-	if( client )
+	if( client > 0 )
 	{
+		// Manual spawned
 		method = g_iCvarAngle;
 		GetClientAbsOrigin(client, vPos);
 		GetClientEyeAngles(client, vAng);
 	}
 	else
 	{
-		g_iSaved = 0;
-
-		char sPath[PLATFORM_MAX_PATH];
-		BuildPath(Path_SM, sPath, sizeof(sPath), CONFIG_SPAWNS);
-		if( !FileExists(sPath) )
-			return;
-
-		KeyValues hFile = new KeyValues("crash");
-		hFile.ImportFromFile(sPath);
-
-		char sMap[64];
-		GetCurrentMap(sMap, sizeof(sMap));
-
-		if( !hFile.JumpToKey(sMap) )
+		// Map config
+		if( !client )
 		{
-			delete hFile;
-			return;
-		}
+			g_iSaved = 0;
 
-		time = hFile.GetNum("time");
-		method = hFile.GetNum("method");
+			char sPath[PLATFORM_MAX_PATH];
+			BuildPath(Path_SM, sPath, sizeof(sPath), CONFIG_SPAWNS);
+			if( !FileExists(sPath) )
+				return;
 
-		if( time == 0 )
-		{
-			float vVec[3];
-			hFile.GetVector("vpos", vVec, view_as<float>({ 999.9, 999.9, 999.9 }));
+			KeyValues hFile = new KeyValues("crash");
+			hFile.ImportFromFile(sPath);
 
-			if( vVec[0] != 999.9 && vVec[1] != 999.9 )
+			char sMap[64];
+			GetCurrentMap(sMap, sizeof(sMap));
+
+			if( !hFile.JumpToKey(sMap) )
 			{
-				float vMaxs[3], vMins[3];
-				hFile.GetVector("vmax", vMaxs);
-				hFile.GetVector("vmin", vMins);
-
-				if( IsValidEntRef(g_iTrigger) )
-				{
-					RemoveEntity(g_iTrigger);
-					g_iTrigger = 0;
-				}
-
-				CreateTriggerMultiple(vVec, vMaxs, vMins);
+				delete hFile;
+				return;
 			}
 
-			time = -1;
-		}
+			time = hFile.GetNum("time");
+			method = hFile.GetNum("method");
 
-		vAng[1] = hFile.GetFloat("ang");
-		hFile.GetVector("pos", vPos, view_as<float>({ 999.9, 999.9, 999.9 }));
+			if( time == 0 )
+			{
+				float vVec[3];
+				hFile.GetVector("vpos", vVec, view_as<float>({ 999.9, 999.9, 999.9 }));
 
-		if( vPos[0] == 999.9 && vPos[1] == 999.9 )
-		{
+				if( vVec[0] != 999.9 && vVec[1] != 999.9 )
+				{
+					float vMaxs[3], vMins[3];
+					hFile.GetVector("vmax", vMaxs);
+					hFile.GetVector("vmin", vMins);
+
+					if( IsValidEntRef(g_iTrigger) )
+					{
+						RemoveEntity(g_iTrigger);
+						g_iTrigger = 0;
+					}
+
+					CreateTriggerMultiple(vVec, vMaxs, vMins);
+				}
+
+				time = -1;
+			}
+
+			vAng[1] = hFile.GetFloat("ang");
+			hFile.GetVector("pos", vPos, view_as<float>({ 999.9, 999.9, 999.9 }));
+
+			if( vPos[0] == 999.9 && vPos[1] == 999.9 )
+			{
+				delete hFile;
+				return;
+			}
+
 			delete hFile;
-			return;
 		}
-
-		delete hFile;
 	}
 
 
@@ -1571,7 +1597,7 @@ void CreatePlaneCrash(float vPos[3], float vAng[3], int method)
 	}
 }
 
-public void OnUserCollision(const char[] output, int caller, int activator, float delay)
+void OnUserCollision(const char[] output, int caller, int activator, float delay)
 {
 	if( g_iCvarClear )
 		CreateTimer(float(g_iCvarClear), TimerReset);
@@ -1582,7 +1608,7 @@ public void OnUserCollision(const char[] output, int caller, int activator, floa
 	TeleportEntity(caller, vPos, NULL_VECTOR, NULL_VECTOR);
 }
 
-public Action TimerReset(Handle timer)
+Action TimerReset(Handle timer)
 {
 	ResetPlugin();
 	return Plugin_Continue;
