@@ -150,7 +150,7 @@ public void OnPluginStart()
 {
 	g_hCvarAllow =			CreateConVar(	"l4d_plane_crash_allow",		"1",			"0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
 	g_hCvarAngle =			CreateConVar(	"l4d_plane_crash_angle",		"1",			"0=Spawn the plane in front of you (crashes to the left), 1=Spawn so the plane crashes in front of you.", CVAR_FLAGS );
-	g_hCvarChance =			CreateConVar(	"l4d_plane_crash_chance",		"100",			"The percentage change of a saved plane crash being created, either from the saved config or using the random cvar.", CVAR_FLAGS );
+	g_hCvarChance =			CreateConVar(	"l4d_plane_crash_chance",		"100",			"The percentage chance of a saved plane crash being created from the saved config.", CVAR_FLAGS );
 	g_hCvarClear =			CreateConVar(	"l4d_plane_crash_clear",		"0",			"0=Off, Remove the plane crash this many seconds after the plane hits the ground.", CVAR_FLAGS );
 	g_hCvarDamage =			CreateConVar(	"l4d_plane_crash_damage",		"20",			"0=Off, Other value will hurt players if they get crushed by some debris.", CVAR_FLAGS );
 	g_hCvarHorde =			CreateConVar(	"l4d_plane_crash_horde",		"24",			"0=Off, Trigger a panic event this many seconds after the plane spawns.", CVAR_FLAGS );
